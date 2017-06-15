@@ -55,7 +55,7 @@ class IntervalGenerator(object):
         self.begin_interval = -1
         self.end_interval = -1
 
-def chaosIndex(sqlstr, interval_in_secs, db, player = None):
+def chaosIndex(sqlstr, interval_in_secs, db, file_name,player = None):
     num_enter = 0
 
     dbms = DatabaseManager(db)
@@ -94,10 +94,8 @@ def chaosIndex(sqlstr, interval_in_secs, db, player = None):
             one_block_time = 0
             ##忽略最后不满一小时的数据
             # player_list.append(last_key_value)
-            if len(player_list) == 0:
-                player_list.append(unique_acts)
 
-            if current_player != -1:
+            if current_player != -1 and len(player_list) !=0:
                 total_index_dict[current_player] = player_list
 
             player_list = []
@@ -132,8 +130,7 @@ def chaosIndex(sqlstr, interval_in_secs, db, player = None):
             action_set.add(action)
             unique_acts += 1
 
-
-    if len(player_list) == 0:
+    if len(player_list) != 0:
         player_list.append(unique_acts)
 
     total_index_dict[current_player] = player_list
@@ -176,7 +173,7 @@ def chaosIndex(sqlstr, interval_in_secs, db, player = None):
                             "最小指标值": min_index_value,
                             "指标均值": mean_index_value,
                             "指标中位数": median_index_value})
-    name = index + "_" + str(interval_in_secs) + ".csv"
+    name = file_name + "_" + str(interval_in_secs) + ".csv"
 
     plot_df.to_csv(name, encoding="utf_8", index=False)
 
@@ -271,7 +268,7 @@ def timeGen(db, sqlstr, begin_date, during_days):
     times.to_csv("体力损耗分布.csv", index=False)
     return times
 
-def keyIndexTimes(sqlstr, interval_in_secs, db, player = None):
+def clickTimes(sqlstr, interval_in_secs, db, feature_name, player = None):
     num_enter = 0
 
     dbms = DatabaseManager(db)
@@ -308,12 +305,13 @@ def keyIndexTimes(sqlstr, interval_in_secs, db, player = None):
             first_action_time = timestamp
             last_action_time = timestamp
             one_block_time = 0
+
             ##忽略最后不满一小时的数据
             # player_list.append(last_key_value)
-            if len(player_list) == 0:
-                player_list.append(unique_acts)
+            # if len(player_list) == 0:
+            #     player_list.append(unique_acts)
 
-            if current_player != -1:
+            if current_player != -1 and len(player_list) != 0:
                 total_index_dict[current_player] = player_list
 
             player_list = []
@@ -347,7 +345,7 @@ def keyIndexTimes(sqlstr, interval_in_secs, db, player = None):
         unique_acts += 1
 
 
-    if len(player_list) == 0:
+    if len(player_list) != 0:
         player_list.append(unique_acts)
 
     total_index_dict[current_player] = player_list
@@ -390,7 +388,7 @@ def keyIndexTimes(sqlstr, interval_in_secs, db, player = None):
                             "最小指标值": min_index_value,
                             "指标均值": mean_index_value,
                             "指标中位数": median_index_value})
-    name = index + "_" + str(interval_in_secs) + ".csv"
+    name = feature_name + "_" + str(interval_in_secs) + ".csv"
 
     plot_df.to_csv(name, encoding="utf_8", index=False)
 
@@ -414,9 +412,11 @@ if __name__ == "__main__":
     sqls = "SELECT yonghu_id, timestamp, action FROM maidian ORDER BY yonghu_id,timestamp ASC;"
 
     sqls_kuangbaozhiyi = "SELECT user_id, riqi, action FROM maidian ORDER BY user_id,riqi ASC;"
-    # chaosIndex(sqls_kuangbaozhiyi, interval_in_secs=60, db=db3)
+
+    # chaosIndex(sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3,file_name="混乱度_狂暴之翼")
+
     # keyIndexTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=60, db=db3)
-    keyIndexTimes(sqlstr=sqls, interval_in_secs=60, db=db2)
+    clickTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="点击次数_狂暴之翼")
 
     begin_date = datetime.strptime("2016-10-10", "%Y-%m-%d")
     sqlstr_kbzy_tili = "SELECT user_id, tili, riqi FROM maidian ORDER BY user_id,riqi ASC;"
