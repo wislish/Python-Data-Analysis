@@ -278,10 +278,8 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
             ##忽略最后不满一小时的数据
             # player_list.append(last_key_value)
 
-            if len(player_list) == 0:
-                player_list.append(num_growth)
 
-            if current_player != -1:
+            if current_player != -1 and len(player_list) != 0:
                 total_index_dict[current_player] = player_list
 
             player_list = []
@@ -321,7 +319,7 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
         last_action_time = timestamp
         last_key_value = key_factor
 
-    if len(player_list) == 0:
+    if len(player_list) != 0:
         player_list.append(num_growth)
 
     total_index_dict[current_player] = player_list
@@ -627,4 +625,6 @@ if __name__ == "__main__":
 
     # keyIndexGrowthByActions(index=feature, user_id=userp, timestamp=timep, action=actionp, interval_in_secs=864000, db=db, growth=False)
     sql_diff_user = "SELECT yonghu_id, timestamp, duiwu_zhanli FROM maidian WHERE num_days_played = 3 ORDER BY yonghu_id,timestamp ASC;"
-    keyIndexGrowthTimes(sqlstr=sql_diff_user, interval_in_secs=3600, db=db4, feature_name="队伍战力-3天用户")
+    # keyIndexGrowthTimes(sqlstr=sql_diff_user, interval_in_secs=3600, db=db4, feature_name="队伍战力-3天用户")
+
+    keyIndexGrowthTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="战力" )
