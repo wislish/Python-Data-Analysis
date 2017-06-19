@@ -621,10 +621,10 @@ if __name__ == "__main__":
     actionp = "action"
     # new_date = datetime.strptime("2017-05-18", "%Y-%m-%d")
     # keyIndexGrowthByDays(feature, conn, new_date.timestamp())
-    # keyIndexGrowthByHours(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=60, db=db3, feature_name="战力")
+    keyIndexGrowthByHours(sqlstr=sqls, interval_in_secs=3600, db=db2, feature_name="队伍战力")
 
     # keyIndexGrowthByActions(index=feature, user_id=userp, timestamp=timep, action=actionp, interval_in_secs=864000, db=db, growth=False)
     sql_diff_user = "SELECT yonghu_id, timestamp, duiwu_zhanli FROM maidian WHERE num_days_played = 3 ORDER BY yonghu_id,timestamp ASC;"
     # keyIndexGrowthTimes(sqlstr=sql_diff_user, interval_in_secs=3600, db=db4, feature_name="队伍战力-3天用户")
 
-    keyIndexGrowthTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="战力" )
+    # keyIndexGrowthTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="战力" )

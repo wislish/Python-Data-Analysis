@@ -205,8 +205,8 @@ def indexChangeCumul(db, sqlstr, begin_date, end_date, **kw):
             # print(timestamp)
 
         player_id = row[0]
-        timestamp = row[2]
-        key_factor = row[1]
+        timestamp = row[1]
+        key_factor = row[2]
 
         if player_id != current_player:
 
@@ -234,9 +234,12 @@ def indexChangeCumul(db, sqlstr, begin_date, end_date, **kw):
     timeDict[current_player] = cumulative_index
     pd_dist = pd.DataFrame(list(timeDict.items()), columns=['Player', 'CumulativeChange'])
 
+    # name = feature_name  + "_" + str(changeF) +".xlsx"
+    # pd_dist.to_excel(name,'Sheet1',index=False, engine='xlsxwriter')
+
     return pd_dist
 
-def timeGen(db, sqlstr, begin_date, during_days):
+def timeGen(db, sqlstr, begin_date, during_days, feature_name):
 
     # begin_date = datetime.strptime("2017-05-18", "%Y-%m-%d")
     ##可以根据latestPlayDate函数找到玩家的玩的最晚一天，这里先写死
@@ -265,7 +268,9 @@ def timeGen(db, sqlstr, begin_date, during_days):
         name = str(i) + "Day"
         times.loc[:, name] = res.apply(lambda x: dayPlay(x, i + 1), axis=1)
 
-    times.to_csv("体力损耗分布.csv", index=False)
+    name = feature_name + "_" + str(-1) + ".xlsx"
+    times.to_excel(name, 'Sheet1', index=False, engine='xlsxwriter')
+    # times.to_csv("体力损耗分布.csv", index=False)
     return times
 
 def clickTimes(sqlstr, interval_in_secs, db, feature_name, player = None):
@@ -416,12 +421,16 @@ if __name__ == "__main__":
     # chaosIndex(sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3,file_name="混乱度_狂暴之翼")
 
     # keyIndexTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=60, db=db3)
-    clickTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="点击次数_狂暴之翼")
+    # clickTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="点击次数_狂暴之翼")
 
     begin_date = datetime.strptime("2016-10-10", "%Y-%m-%d")
     sqlstr_kbzy_tili = "SELECT user_id, tili, riqi FROM maidian ORDER BY user_id,riqi ASC;"
 
-    # timeGen(db3,sqlstr_kbzy_tili,begin_date,3)
+    sql_xiamen_jinbi_drop = "SELECT yonghu_id, timestamp, jinbi FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+    # indexChangeCumul(db=db2,sqlstr=sql_xiamen_jinbi_drop, )
+    # timeGen()
+    xiamen_begin = datetime.strptime("2016-06-01", "%Y-%m-%d")
+    timeGen(db2,sql_xiamen_jinbi_drop,begin_date,5,feature_name="金币")
     # clickFrequency(db)
     # enter_action = "世界地图 / 世界地图 / 【主】创建部队"
     # exit_action = "世界地图 / 世界地图 / 【部队】添加部队"

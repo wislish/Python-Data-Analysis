@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import codecs
 import time
@@ -10,21 +11,17 @@ import pandas as pd
 from operator import itemgetter
 import numpy as np
 from collections import Counter
-
+from keyIndexAnalysis import IntervalGenerator
 
 ## 分离比较ACTION的逻辑
-def compareAction(user_action, action_list, auto=False):
+def compareAction(user_action, action_list):
 
-    if not auto:
-        if user_action in action_list:
-            return True
-        else:
-            return False
+
+    if user_action in action_list:
+        return True
     else:
-        if user_action not in action_list:
-            return True
-        else:
-            return False
+        return False
+
 
 
 ## 分离了 database 的管理
@@ -40,9 +37,11 @@ class DatabaseManager(object):
     def __del__(self):
         self.conn.close()
 
-def dataGen(db, query):
+def dataGen(db_file, query):
 
-    for row in db.query(query):
+    dbms = DatabaseManager(db_file)
+
+    for row in dbms.query(query):
         yield row
 
 def ui_continuing_click(in_action, data_iterator):
@@ -447,20 +446,119 @@ def ui_enter_ratio(data_iterator, first_day_timestamp, n, in_action, loss_window
     else:
         return (num_ui_enter / num_enter)
 
+def ui_click_times(in_action, data_iterator):
+
+    current_player = -1
+
+    ui_click = 0
+    first_click_level = 0
+    starting_time = time.time()
+    counter = 0
+    player_dict = collections.defaultdict(tuple)
+
+
+    for row in data_iterator:
+
+        counter += 1
+        if counter % 1000000 == 0:
+            print("%s lines processed\n" % counter)
+
+
+        level = row[3]
+        action = row[2]
+        player_id = row[0]
+        timestamp = row[1]
+
+        # 如果更换用户，初始化所有值
+        if player_id != current_player:
+
+            if current_player != -1:
+                val = (ui_click, first_click_level)
+                player_dict[current_player] = val
+
+            ui_click = 0
+            first_click_level = 0
+            find_flag = False
+            current_player = player_id
 
 
 
+        # 如果对某一个用户，第一次找到相应的进入UI动作，记录总人数加一并标记。
+        if (compareAction(action, in_action)):
+            ui_click += 1
+            if not find_flag:
+                find_flag = True
+                first_click_level = level
+
+    val = (ui_click, first_click_level)
+    player_dict[current_player] = val
+
+    end_time = time.time()
+    print("script ran for %s secs" % ((end_time - starting_time)))
+
+    pd_dist = pd.DataFrame(list(player_dict.items()), columns=['Player', 'Info'])
+    pd_dist.loc[:, 'Times'] = pd_dist.Info.apply(lambda t: t[0])
+    pd_dist.loc[:, 'Level'] = pd_dist.Info.apply(lambda t: t[1])
+    # name = "./ui/" + action.split("/")[-1] + ".csv"
+    name = in_action.split("/")[-1] + ".xlsx"
+    out_path = os.path.join(os.getcwd(), "ui",name)
+    # writer = pd.ExcelWriter(out_path)
+    pd_dist.loc[pd_dist['Times'] != 0,].to_excel(out_path, 'Sheet1',index=False, engine='xlsxwriter')
+
+    return pd_dist
+
+def timeGen(db, sqlstr, begin_date, during_days, feature_name):
+
+    # begin_date = datetime.strptime("2017-05-18", "%Y-%m-%d")
+    ##可以根据latestPlayDate函数找到玩家的玩的最晚一天，这里先写死
+    # during_days = 6
+
+    intervalGen = IntervalGenerator(begin_date.timestamp(), days=during_days)
+    final_df = []
+    i=0
+    res = pd.DataFrame()
+
+    for ig in intervalGen.daysGenerator():
+        begin_date = ig.begin_interval
+        end_date = ig.end_interval
+        dayOneDF = ui_click_times(db, sqlstr, begin_date, end_date, changeF=-1)
+        if i == 0:
+            res.loc[:, 'Player'] = dayOneDF['Player']
+        name = str(i) + "Day"
+        print(name)
+        #     res = res.assign({name:dayOneDF['CumulativeChange']})
+        # res.loc[:, name] = dayOneDF['CumulativeChange']
+        i += 1
+
+    times = pd.DataFrame()
+    times['Player'] = res['Player']
+
+
+    name = feature_name + "_" + str(-1) + ".xlsx"
+    times.to_excel(name, 'Sheet1', index=False, engine='xlsxwriter')
+    # times.to_csv("体力损耗分布.csv", index=False)
+    return times
 
 
 if __name__ == "__main__":
 
     db_file = "./world_six.db"
-    db = DatabaseManager(db_file)
-    query_sql = "SELECT player_id,action,happen_time FROM maidian ORDER BY player_id,happen_time ASC"
+    # db = DatabaseManager(db_file)
+    # query_sql = "SELECT player_id,action,happen_time FROM maidian ORDER BY player_id,happen_time ASC"
 
-    enter_action = "世界地图 / 城池菜单 / 点击城池"
-    exit_action = "【封】点击酒馆"
+    db = "/home/maoan/maidianAnalysis/level2-uianalysis/world_seven.db"
+    db2 = "/home/maoan/maidianAnalysis/xiamen/xiamen_1.db"
+    db3= "/home/maoan/maidianAnalysis/xiamen/1308310007.db"
+    db4 = "/home/maoan/maidianAnalysis/xiamen/xiamen_1b.db"
 
+    sqlstr = "SELECT yonghu_id, timestamp, action, duiwu_level FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+
+    # with open("alist.txt", 'r', encoding="utf_8") as f:
+    #     for line in f:
+    #         print(line)
+    #         ui_click_times(line, dataGen(db2, sqlstr))
+    sql_diff_user = "SELECT yonghu_id, timestamp, action, duiwu_level FROM maidian WHERE num_days_played = 2 ORDER BY yonghu_id,timestamp ASC;"
+    ui_click_times("UIRoot2D/NormalPanel/MainWin/Go_StarReward/Btn_Reward",dataGen(db4, sql_diff_user))
     # ui_stay_click_distribution(enter_action, exit_action, dataGen(db, query_sql))
     # with codecs.open("world_seven_uianalysis.csv", 'a+', "utf_8_sig") as csvfile:
     #     # csvfile.write("loss_rate,average_normal_stay_time,average_total_stay_time,ui_enter_rate\n")
@@ -489,11 +587,6 @@ if __name__ == "__main__":
         #         loss_rate, average_stay_click, num_of_greater_3, average_normal_stay_time, average_total_stay_time,
         #         enter_rate, enter_action, out_action))
     # ui_loss_rate(enter_action, enter_action, dataGen(db, query_sql))
-    ui_continuing_click(enter_action, dataGen(db, query_sql))
-    # average_normal_stay_time, average_total_stay_time = ui_stay_time(enter_action, enter_action,
-    #                                                                  dataGen(db, query_sql))
+    # ui_continuing_click(enter_action, dataGen(db, query_sql))
 
-        # "世界地图 / 城池菜单 / 【菜单】点击巡查" 0.78
-        # "封地 / 封地 / 【主】任务列表" 0.792
-        #  "封地 / 英雄 / 英雄卡牌-徐庶" 0.28125
-        # "世界地图 / 世界地图 / 【主】任务列表" 0.83290:5.19 0.84153:5.20
+    # ui_click_times()
