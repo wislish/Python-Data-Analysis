@@ -131,9 +131,7 @@ def chaosIndex(sqlstr, interval_in_secs, db, file_name,player = None):
             unique_acts += 1
 
     if len(player_list) != 0:
-        player_list.append(unique_acts)
-
-    total_index_dict[current_player] = player_list
+        total_index_dict[current_player] = player_list
 
     pd_dist = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'KeyFactor'])
 
@@ -351,9 +349,7 @@ def clickTimes(sqlstr, interval_in_secs, db, feature_name, player = None):
 
 
     if len(player_list) != 0:
-        player_list.append(unique_acts)
-
-    total_index_dict[current_player] = player_list
+        total_index_dict[current_player] = player_list
 
     pd_dist = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'KeyFactor'])
 

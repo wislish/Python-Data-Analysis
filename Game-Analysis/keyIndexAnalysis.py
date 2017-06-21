@@ -251,6 +251,8 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
     last_action_time = -1
     last_key_value = -1
     one_block_time = 0
+    time_limit = 300
+
 
     total_index_dict = collections.defaultdict(list)
     player_list = []
@@ -261,7 +263,7 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
     for row in data_iterator:
 
         counter += 1
-        if counter % 100000 == 0:
+        if counter % 1000000 == 0:
             print("%s lines processed\n" % counter)
             # print(timestamp)
 
@@ -277,7 +279,8 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
             one_block_time = 0
             ##忽略最后不满一小时的数据
             # player_list.append(last_key_value)
-
+            # if len(player_list) == 0:
+            #     player_list.append(num_growth)
 
             if current_player != -1 and len(player_list) != 0:
                 total_index_dict[current_player] = player_list
@@ -292,7 +295,7 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
         #     continue
         ##　如果这次点击的时间跟上一次点击的时间的差小于阈值，则进入计算累计时间。否则重新定义
         # 连续点击的第一次。
-        if timestamp - last_action_time <= interval_in_secs:
+        if timestamp - last_action_time <= time_limit:
             during_time = last_action_time - first_action_time
             ## 如果这一次的时间差加上前面的累计时间大于阈值，则记录上一次
             # 的值为上一个时间段的关键指标的值
@@ -320,9 +323,7 @@ def keyIndexGrowthTimes(sqlstr, interval_in_secs, db, feature_name):
         last_key_value = key_factor
 
     if len(player_list) != 0:
-        player_list.append(num_growth)
-
-    total_index_dict[current_player] = player_list
+        total_index_dict[current_player] = player_list
 
     pd_dist = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'KeyFactorTimes'])
     # pd_dist['KeyFactor'].apply(lambda x : len(x) != 0)
@@ -388,7 +389,7 @@ def keyIndexGrowthByHours(sqlstr, interval_in_secs, db, feature_name, player = N
     for row in data_iterator:
 
         counter += 1
-        if counter % 100000 == 0:
+        if counter % 1000000 == 0:
             print("%s lines processed\n" % counter)
             # print(timestamp)
 
@@ -407,10 +408,10 @@ def keyIndexGrowthByHours(sqlstr, interval_in_secs, db, feature_name, player = N
             one_block_time = 0
             ##忽略最后不满一小时的数据
             # player_list.append(last_key_value)
-            if len(player_list) == 0:
-                player_list.append(last_key_value)
+            # if len(player_list) == 0 and :
+            #     player_list.append(last_key_value)
 
-            if current_player != -1:
+            if current_player != -1 and len(player_list) != 0:
                 total_index_dict[current_player] = player_list
 
             player_list = []
@@ -441,10 +442,8 @@ def keyIndexGrowthByHours(sqlstr, interval_in_secs, db, feature_name, player = N
         last_action_time = timestamp
         last_key_value = key_factor
 
-    if len(player_list) == 0:
-        player_list.append(last_key_value)
-
-    total_index_dict[current_player] = player_list
+    if len(player_list) != 0:
+        total_index_dict[current_player] = player_list
 
     pd_dist = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'KeyFactor'])
     pd_dist['KeyFactor'].apply(lambda x : len(x) != 0)
@@ -621,10 +620,10 @@ if __name__ == "__main__":
     actionp = "action"
     # new_date = datetime.strptime("2017-05-18", "%Y-%m-%d")
     # keyIndexGrowthByDays(feature, conn, new_date.timestamp())
-    keyIndexGrowthByHours(sqlstr=sqls, interval_in_secs=3600, db=db2, feature_name="队伍战力")
+    keyIndexGrowthByHours(sqlstr=sqls, interval_in_secs=3600, db=db4, feature_name="队伍战力")
 
     # keyIndexGrowthByActions(index=feature, user_id=userp, timestamp=timep, action=actionp, interval_in_secs=864000, db=db, growth=False)
     sql_diff_user = "SELECT yonghu_id, timestamp, duiwu_zhanli FROM maidian WHERE num_days_played = 3 ORDER BY yonghu_id,timestamp ASC;"
     # keyIndexGrowthTimes(sqlstr=sql_diff_user, interval_in_secs=3600, db=db4, feature_name="队伍战力-3天用户")
 
-    # keyIndexGrowthTimes(sqlstr=sqls_kuangbaozhiyi, interval_in_secs=3600, db=db3, feature_name="战力" )
+    keyIndexGrowthTimes(sqlstr=sqls, interval_in_secs=3600, db=db4, feature_name="队伍战力" )
