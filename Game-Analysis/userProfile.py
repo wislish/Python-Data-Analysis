@@ -329,9 +329,9 @@ def ui_stay_time(in_action, out_action, loss_window=20):
         action = row[1]
         timestamp = row[2]
 
-        ## 如果操作为启动状态,忽略.
-        if major_action == None or major_action == "启动":
-            continue
+        # ## 如果操作为启动状态,忽略.
+        # if major_action == None or major_action == "启动":
+        #     continue
 
         # 如果被标记，该用户所有剩余action都忽略
         if not correct_exit:

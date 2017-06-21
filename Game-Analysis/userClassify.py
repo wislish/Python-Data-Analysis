@@ -10,9 +10,11 @@ import numpy as np
 import itertools
 import os
 import collections
+from matplotlib import cm
 
 from sklearn import tree
 from sklearn.cluster import KMeans
+from sklearn.cluster import AgglomerativeClustering
 
 from sklearn.tree import export_graphviz
 from sklearn.model_selection import train_test_split
@@ -22,6 +24,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import recall_score
+from sklearn import metrics
 
 from sklearn import preprocessing
 
@@ -83,6 +86,36 @@ def visualize_tree(tree, feature_names):
         exit("Could not run dot, ie graphviz, to "
              "produce visualization")
 
+def visualize_silhouette_score(X,y_km):
+
+    cluster_labels = np.unique(y_km)
+    n_clusters = cluster_labels.shape[0]
+    silhouette_vals = metrics.silhouette_samples(X,
+                                         y_km,
+                                         metric='euclidean')
+    y_ax_lower, y_ax_upper = 0, 0
+    yticks = []
+    for i, c in enumerate(cluster_labels):
+        c_silhouette_vals = silhouette_vals[y_km == c]
+        c_silhouette_vals.sort()
+        y_ax_upper += len(c_silhouette_vals)
+        color = cm.jet(i / n_clusters)
+        plt.barh(range(y_ax_lower, y_ax_upper),
+                c_silhouette_vals,
+                height=1.0,
+                edgecolor='none',
+                color=color)
+        yticks.append((y_ax_lower + y_ax_upper) / 2)
+        y_ax_lower += len(c_silhouette_vals)
+
+    silhouette_avg = np.mean(silhouette_vals)
+    plt.axvline(silhouette_avg,
+                color="red",
+                linestyle="--")
+    plt.yticks(yticks, cluster_labels + 1)
+    plt.ylabel('Cluster')
+    plt.xlabel('Silhouette coefficient')
+    plt.show()
 
 def classify(X,y, clf,**para):
     # y = profile["Loss"].as_matrix()
@@ -118,36 +151,136 @@ def standarization(X):
 
 def preProcess(profile):
     profile.dropna(axis=0, how='any', inplace=True)
+    profile = transfromFeatures(profile)
+
+    return profile
+
+def transfromFeatures(predDF):
+
+    print("Transform the categorical features into numerical.")
+    cat_col = predDF.select_dtypes(exclude=[np.number]).columns
+    num_col = predDF.select_dtypes(include=[np.number]).columns
+
+
+    num_col_hosts = predDF[num_col].apply(lambda x: x.fillna(x.mean()))
+    cat_col_hosts = predDF[cat_col].apply(lambda x: x.fillna(x.value_counts().index[0]))
+    print('numerical column null count:' + (str)(num_col_hosts.isnull().sum().sum()))
+    print('categorical column null count:' + (str)(cat_col_hosts.isnull().sum().sum()))
+
+    le = preprocessing.LabelEncoder()
+    coding_hosts = cat_col_hosts.apply(lambda x: le.fit_transform(x))
+
+    ## merge two dataframes
+    frames = [coding_hosts, num_col_hosts]
+    cocat_hosts = pd.concat(frames, axis=1)
+
+    col = cocat_hosts.columns.tolist()
+    # print(col)
+    np.random.shuffle(col)
+
+    recurring_hosts = cocat_hosts[col].copy(deep=True)
+
+    return recurring_hosts
 
     # return profile
-def clustering(X,y,clf,**para):
+def clustering(X,clf,**para):
 
-    skf = StratifiedKFold(n_splits=6)
+    # skf = StratifiedKFold(n_splits=3)
     cluster = clf(**para)
 
     ## shuffle the data before clustering
-    r = np.random.permutation(len(y))
+    r = np.random.permutation(X.shape[0])
     X = X[r,:]
-    y= y[r]
+    # y= y[r]
 
-    cluster.fit(X)
+    cluster.fit_predict(X)
     name = str(cluster).split("(")[0]
 
     print("{0} has been established with {1}".format(name, para))
 
-    for train_index, test_index in skf.split(X, y):
-        #     print("TRAIN:",train_index, "TEST:", test_index)
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        cluster.fit(X_train, y_train)
-        y_pred = cluster.predict(X_test)
-        score = max(accuracy_score(y_test, y_pred),1-accuracy_score(y_test, y_pred))
-        print("10-fold Score is: {0}".format(score))
 
-    return cluster,y_test, y_pred
+    # score = max(accuracy_score(y_test, y_pred),1-accuracy_score(y_test, y_pred))
 
+    """
+    ---R-SCORE (adjusted rand score)---
+    Random (uniform) label assignments have a ARI score close to 0.0 
+        for any value of n_clusters and n_samples (which is not the case for raw Rand index or the V-measure for instance).
+    Bounded range [-1, 1]: 
+        negative values are bad (independent labelings), 
+        similar clusterings have a positive ARI, 1.0 is the perfect match score.
+    No assumption is made on the cluster structure: 
+        can be used to compare clustering algorithms such as k-means 
+        which assumes isotropic blob shapes with results of spectral clustering algorithms 
+        which can find cluster with “folded” shapes.
+    """
+    # r_score = metrics.adjusted_rand_score(y_test, y_pred)
 
-if __name__ == "__main__":
+    """
+    ---NMI-SCORE Normalized Mutual Information)---
+    
+    Random (uniform) label assignments have a ARI score close to 0.0 
+        for any value of n_clusters and n_samples (which is not the case for raw Rand index or the V-measure for instance).
+    Bounded range [-1, 1]: 
+        Values close to zero indicate two label assignments that are largely independent, 
+        while values close to one indicate significant agreement. 
+        Further, values of exactly 0 indicate purely independent label assignments and a AMI of exactly 1 
+        indicates that the two label assignments are equal (with or without permutation).
+    No assumption is made on the cluster structure: 
+        can be used to compare clustering algorithms such as k-means 
+        which assumes isotropic blob shapes with results of spectral clustering algorithms 
+        which can find cluster with “folded” shapes.
+    """
+    # nmi_score = metrics.adjusted_mutual_info_score(y_test, y_pred)
+
+    # print("10-fold accuracy is: {0}, "
+    #       "the Adjusted R-score is: {1}, "
+    #       "the NMI-SCORE is: {2}".format(score,r_score,nmi_score))
+
+    return cluster
+
+def classifyUsers():
+
+    profile = pd.read_csv("/home/maoan/maidianAnalysis/level2-uianalysis/用户画像.csv")
+
+    ## Construct the features name.
+    features = profile.columns[1:2].tolist() + profile.columns[4:].tolist()
+
+    ## preProcess
+    print(profile.shape)
+    profile = preProcess(profile)
+
+    print(profile.columns)
+    X = profile[features].as_matrix()
+    y = profile["Loss"].as_matrix()
+
+    ## choose the classifier and set the parameters
+    min_split = 20
+    max_dep = 3
+    dt = tree.DecisionTreeClassifier
+    lr = LogisticRegression
+
+    # conduct the classfiy and pass the related parameters
+    _, y_test, y_pred = classify(X=X,y=y,clf=dt,
+                                 min_samples_split=min_split, max_depth=max_dep)
+
+    class_names = ['Leave', 'Stay']
+
+    print("==========================")
+    print("The true positive feature is '{0}'".format(class_names[1]))
+    print("The precision score is {0}".format(precision_score(y_true=y_test, y_pred=y_pred)))
+    print("The recall score is {0}".format(recall_score(y_true=y_test, y_pred=y_pred)))
+    print("The F1 score is {0}".format(f1_score(y_true=y_test, y_pred=y_pred)))
+    print("==========================")
+
+    ## Visualize the result
+    cnf_matrix = confusion_matrix(y_test, y_pred)
+    np.set_printoptions(precision=2)
+    plt.figure()
+    plot_confusion_matrix(cnf_matrix, classes=class_names,
+                          title='Confusion matrix, without normalization')
+    plt.show()
+
+def clusterUsers():
     profile = pd.read_csv("/home/maoan/maidianAnalysis/level2-uianalysis/用户画像.csv")
 
     ## Construct the features name.
@@ -159,52 +292,46 @@ if __name__ == "__main__":
 
     X = profile[features].as_matrix()
     y = profile["Loss"].as_matrix()
-    ## choose the classifier
-    min_split = 20
-    max_dep = 3
-    dt = tree.DecisionTreeClassifier
-    lr = LogisticRegression
 
-    ## conduct the classfiy and pass the related parameters
-    # _, y_test, y_pred = classify(X,y=y,clf=dt,
-    #                              min_samples_split=min_split, max_depth=max_dep)
-
-    ##########################################################
-    ##########################################################
-    ## conduct the clustering and pass the related parameters#
+    ## select the clustering methods and set the parameters
     kmeans = KMeans
-    num_clusters = 2
+    amcluster = AgglomerativeClustering
+    max_clusters = 3
 
     ## Done standarization before if you want to use K-Means
     scaler = standarization(X)
-    res, y_test, y_pred = clustering(scaler.transform(X),y,clf=kmeans, n_clusters=num_clusters)
 
-    print("==========================")
-    print("Clusters centroids are:")
-    print('{:15} | {:^9} | {:^9}'.format('', 'Cluster0', 'Cluster1'))
-    fmt = '{:15} | {:9.4f} | {:9.4f}'
-    # print(features)
-    origin_x = scaler.inverse_transform(res.cluster_centers_)
-    for i in range(len(features)):
+    ##plot the sum of within cluster errors as the num of clusters grow...
+    distortions = []
+    for i in range(2,max_clusters+1):
 
-        print(fmt.format(features[i],origin_x[0][i],origin_x[1][i]))
-        # print(res.cluster_centers_[i])
-        # print(scaler.inverse_transform(res.cluster_centers_[i]))
+        print("==========================")
+        res = clustering(scaler.transform(X),clf=kmeans, n_clusters=i)
+        distortions.append(res.inertia_)
+        origin_x = scaler.inverse_transform(res.cluster_centers_)
 
-    class_names = ['Leave', 'Stay']
+        print("Clusters centroids are:")
+        head_row = ('{:15}' + ''.join([' {:^9} |'] * len(features))).format('',*features)
+        print(head_row)
 
-    print("==========================")
-    print("The true positive feature is '{0}'".format(class_names[1]))
-    print("The precision score is {0}".format(precision_score(y_true=y_test,y_pred=y_pred)))
-    print("The recall score is {0}".format(recall_score(y_true=y_test,y_pred=y_pred)))
-    print("The F1 score is {0}".format(f1_score(y_true=y_test,y_pred=y_pred)))
-    print("==========================")
+        fmt = '{:15} |' + ''.join([' {:^9.4} |'] * len(features))
+        for num in range(i):
+            name_row = "Cluster" + str(num+1)
+            print(fmt.format(name_row, *(origin_x[num].tolist())))
 
-    ## Visualize the result
-    cnf_matrix = confusion_matrix(y_test, y_pred)
-    np.set_printoptions(precision=2)
-    plt.figure()
-    plot_confusion_matrix(cnf_matrix, classes=class_names,
-                          title='Confusion matrix, without normalization')
-    # plt.show()
+        visualize_silhouette_score(scaler.transform(X),res.labels_)
 
+    plt.plot(range(2, max_clusters+1), distortions, marker='o')
+    plt.xlabel('Number of clusters')
+    plt.ylabel('Distortion')
+    plt.show()
+
+
+        # print(re)
+    #
+    # print(origin_x)
+
+if __name__ == "__main__":
+
+    # classifyUsers()
+    clusterUsers()
