@@ -6,6 +6,10 @@ import time
 from datetime import datetime
 from datetime import timedelta
 import seaborn as sns
+from sklearn import preprocessing
+
+import warnings
+warnings.simplefilter('ignore', np.RankWarning)
 
 ## 分离了 database 的管理
 class DatabaseManager(object):
@@ -563,8 +567,160 @@ def userProfile(db):
 
     resDF.to_csv("用户画像.csv", index= False)
 
+def poly_fit(l,poly_deg):
+    y = l.values
+    x = l.index.tolist()
+    z = np.polyfit(x=x, y=y, deg=poly_deg)
+    p = np.poly1d(z)
+    return p.c
+
+def timeSeriesModel(db, sqlstr, feature_name, poly_deg = 4):
+
+    conn = sqlite3.connect(db)
+    keyIndexData = pd.read_sql_query(sqlstr, conn)
+
+    # keyIndex = keyIndexData.loc[keyIndexData['yonghu_id'] == 1039, 'jinbi']
+    user_trend = keyIndexData.groupby("yonghu_id").apply(lambda x: poly_fit(x[feature_name],poly_deg))
+    user_para = pd.DataFrame()
+
+    for i in range(4 + 1):
+        name = "poly_" + str(4 - i)
+        user_para.loc[:, name] = user_trend.apply(lambda x: x[i])
+        # user_para.loc[:, name] = preprocessing.StandardScaler().fit_transform(user_para[name].values.reshape(-1, 1))
+
+    user_para.to_csv("userTrend.csv",index=False)
+
+def randSample(db,sqlstr):
+    conn = sqlite3.connect(db)
+    keyIndexData = pd.read_sql_query(sqlstr, conn)
+
+    keyIndexData.groupby('yonghu_id').apply(lambda x: x['jinbi'].sample(n=1).values)
+
+
+def wanfa_analysis(in_action, out_action, data_iterator, loss_window=20):
+    time_of_total_stay = 0
+
+    stay_limit = 1500
+    time_limit = 600
+    num_enter = 0
+    num_of_correct_exit = 0
+
+    current_player = -1
+
+    find_flag = False
+    correct_exit = True
+    window_len = 0
+    time_list = []
+
+    starting_time = time.time()
+    counter = 0
+
+    enter_time = 0
+    total_exit_time = 0
+    stay_time = 0
+
+    first_action_time = -1
+    last_action_time = -1
+
+    duringDict = {}
+
+    for row in data_iterator:
+
+        counter += 1
+        if counter % 1000000 == 0:
+            print("%s lines processed\n" % counter)
+            # print("total enter:" + str(num_enter))
+            # print("correct exit :" + str(num_of_correct_exit))
+
+        player_id = row[0]
+        action = row[2]
+        timestamp = row[1]
+
+        # 如果更换用户，初始化所有值，并且计算上一个用户的所有以及正确的停留的时间。
+        if player_id != current_player:
+
+            find_flag = False
+            window_len = 0
+
+            if current_player != -1:
+                time_of_total_stay += last_action_time - first_action_time
+
+                duringDict[current_player] = [time_list, time_of_total_stay]
+
+            current_player = player_id
+
+            first_action_time = timestamp
+            last_action_time = timestamp
+
+            enter_time = 0
+            total_exit_time = 0
+            stay_time = 0
+            time_of_total_stay = 0
+            time_list = []
+
+        ##　如果这次点击的时间跟上一次点击的时间的差小于阈值，则进入计算累计时间。否则重新定义
+        # 连续点击的第一次。
+        if timestamp - last_action_time > time_limit:
+            time_of_total_stay += (last_action_time - first_action_time)
+            # if player_id == 37902:
+            #     print("total: {0}, current: {1},last_action: {2}, first_action{3}".
+            #           format(time_of_total_stay, timestamp, last_action_time, first_action_time))
+            first_action_time = timestamp
+
+        # 如果对某一个用户，第一次找到相应的进入UI动作，记录总人数加一并标记。记录进入时间
+        if (compareAction(action, in_action) and (not find_flag)):
+            find_flag = True
+            enter_time = timestamp
+            total_exit_time = timestamp
+            num_enter += 1
+            last_action_time = timestamp
+            window_len = 0
+            continue
+
+        # 如果已找到进入动作，判断此时动作是否为退出动作。如果是，正确退出加一，否则判断窗口长度是否大于
+        # 标准值，如果是的话，此用户记录为非正常退出，并记录时间
+        if find_flag:
+            if compareAction(action, out_action):
+                num_of_correct_exit += 1
+                stay_time = (timestamp - enter_time)
+                # if player_id == 37902:
+                #     print("correct: {0}, current: {1},enter_time: {2}".
+                #           format(stay_time, timestamp, enter_time))
+                if timestamp - last_action_time <= time_limit:
+                    time_list.append(stay_time)
+
+                find_flag = False
+            else:
+                window_len += 1
+                if window_len >= loss_window or (timestamp - last_action_time) > time_limit:
+
+                    stay_time = (last_action_time - enter_time)
+                    # if player_id == 37902:
+                    #     print("non-correct: {0}, current: {1},enter_time: {2}".
+                    #           format(stay_time, timestamp, enter_time))
+                    time_list.append(stay_time)
+                    find_flag = False
+
+        last_action_time = timestamp
+
+    time_of_total_stay += last_action_time - first_action_time
+
+    duringDict[current_player] = [time_list, time_of_total_stay]
+
+    pd_dist = pd.DataFrame(list(duringDict.items()), columns=['Player', 'TimeOnUI'])
+
+    return pd_dist
+
+
 if __name__ == "__main__":
     db = "/home/maoan/maidianAnalysis/level2-uianalysis/world_seven.db"
+    db2 = "/home/maoan/maidianAnalysis/xiamen/xiamen_1.db"
+    db3 = "/home/maoan/maidianAnalysis/xiamen/1308310007.db"
+    db4 = "/home/maoan/maidianAnalysis/xiamen/xiamen_1b.db"
+
+    feature = "jinbi"
+    sqlstr = "SELECT yonghu_id, wanjia_id," + feature + " FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+
     # clickFrequency(db)
     # enter_action = "世界地图 / 世界地图 / 【主】创建部队"
     # exit_action = "世界地图 / 世界地图 / 【部队】添加部队"
@@ -572,4 +728,5 @@ if __name__ == "__main__":
     # query_sql = "SELECT player_id,action,happen_time FROM maidian ORDER BY player_id,happen_time ASC"
     #
     # ustay = ui_stay_time(enter_action,exit_action, dataGen(dbms,query_sql))
-    userProfile(db)
+    # userProfile(db)
+    timeSeriesModel(db4,sqlstr,"jinbi",)
