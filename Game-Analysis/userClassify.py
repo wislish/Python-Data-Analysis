@@ -8,14 +8,13 @@ from datetime import datetime
 from datetime import timedelta
 import numpy as np
 import itertools
-import os
-import collections
 from matplotlib import cm
 
 from sklearn import tree
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.cluster import KMeans
 from sklearn.cluster import AgglomerativeClustering
-
+import subprocess
 from sklearn.tree import export_graphviz
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
@@ -27,6 +26,8 @@ from sklearn.metrics import recall_score
 from sklearn import metrics
 
 from sklearn import preprocessing
+from imblearn.over_sampling import SMOTE
+from collections import Counter
 
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import StratifiedKFold
@@ -81,7 +82,7 @@ def visualize_tree(tree, feature_names):
 
     command = ["dot", "-Tpng", "dt.dot", "-o", "dt.png"]
     try:
-        os.subprocess.check_call(command)
+        subprocess.check_call(command)
     except:
         exit("Could not run dot, ie graphviz, to "
              "produce visualization")
@@ -117,6 +118,126 @@ def visualize_silhouette_score(X,y_km):
     plt.xlabel('Silhouette coefficient')
     plt.show()
 
+def stratifiedCV(X, y, n_splits = 6):
+
+    skf = StratifiedKFold(n_splits=n_splits)
+
+    for train_index, test_index in skf.split(X, y):
+        #     print("TRAIN:",train_index, "TEST:", test_index)
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+
+        yield X_train, y_train, X_test, y_test
+
+def regulCV(X,y,n_splits = 10):
+
+    kf = KFold(n_splits=n_splits)
+
+    for train_index, test_index in kf.split(X):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+
+        yield X_train, y_train, X_test, y_test
+
+def standarization(X):
+    x_scaler = preprocessing.StandardScaler().fit(X)
+
+    return x_scaler
+
+def confusionMatrixAnalysis(class_names, y_test,y_pred):
+
+    print("========Confusion Matrix Analysis==========")
+    print("The true positive feature is '{0}'".format(class_names[1]))
+    print("The precision score is {0}".format(precision_score(y_true=y_test, y_pred=y_pred)))
+    print("The recall score is {0}".format(recall_score(y_true=y_test, y_pred=y_pred)))
+    print("The F1 score is {0}".format(f1_score(y_true=y_test, y_pred=y_pred)))
+    print("==========================")
+
+    ## Visualize the result
+    cnf_matrix = confusion_matrix(y_test, y_pred)
+    np.set_printoptions(precision=2)
+    plt.figure()
+    plot_confusion_matrix(cnf_matrix, classes=class_names,
+                          title='Confusion matrix, without normalization')
+    # plt.show()
+
+def decisionTreeClassify(X,y, features,class_names, straitified=True,**para):
+
+    dt = tree.DecisionTreeClassifier(**para)
+
+    print("{0} has been established with {1}".format("Decision Tree Classifier ", para))
+
+    cv = stratifiedCV(X,y) if straitified else regulCV(X,y)
+
+    for X_train, y_train, X_test, y_test in cv:
+        dt.fit(X_train, y_train)
+        y_pred = dt.predict(X_test)
+        score = accuracy_score(y_test, y_pred)
+        print("{0} Score is: {1}".format("Straitified Cross Validation",score))
+
+    confusionMatrixAnalysis(class_names,y_test,y_pred)
+
+    visualize_tree(dt,features)
+
+def randomForestClassify(X,y,features,class_names, straitified=True,**para):
+
+    rf = RandomForestClassifier(**para)
+
+    print("{0} has been established with {1}".format("Random Forest Classifier ", para))
+
+
+    cv = stratifiedCV(X,y) if straitified else regulCV(X,y)
+
+    for X_train, y_train, X_test, y_test in cv:
+        rf.fit(X_train, y_train)
+        y_pred = rf.predict(X_test)
+        score = accuracy_score(y_test, y_pred)
+        print("{0} Score is: {1}".format("Straitified Cross Validation",score))
+
+    confusionMatrixAnalysis(class_names,y_test,y_pred)
+
+    ## feature importance analysis
+
+    importances = rf.feature_importances_
+    indices = np.argsort(importances)[::-1]
+
+    print("\n========Feature Importance==========\n")
+
+    for f in range(X_train.shape[1]):
+        print("%2d) %-*s %f" % (f + 1, 30,
+                                features[indices[f]],
+                                importances[indices[f]]))
+
+    # y_pred = rf.predict(test_x)
+    # score = accuracy_score(test_y, y_pred)
+    # print("{0} Score is: {1}".format("Validation Score is ", score))
+    # confusionMatrixAnalysis(class_names,test_y,y_pred)
+
+
+def logiRegressionClassify(X,y, features,class_names, straitified=True,**para):
+
+    lr = LogisticRegression(**para)
+
+
+    print("{0} has been established with {1}".format("Decision Tree Classifier ", para))
+
+    cv = stratifiedCV(X, y) if straitified else regulCV(X, y)
+
+    for X_train, y_train, X_test, y_test in cv:
+        lr.fit(X_train, y_train)
+        y_pred = lr.predict(X_test)
+        score = accuracy_score(y_test, y_pred)
+        print("{0} Score is: {1}".format("Straitified Cross Validation", score))
+
+    confusionMatrixAnalysis(class_names, y_test, y_pred)
+
+    print("\n========Coefficients==========\n")
+    print(lr.coef_)
+    for f in range(X_train.shape[1]):
+        print("%2d) %-*s %f" % (f + 1, 30,
+                                features[f],
+                                lr.coef_[0][f]))
+
 def classify(X,y, clf,**para):
     # y = profile["Loss"].as_matrix()
     # X = profile[features].as_matrix()
@@ -144,10 +265,7 @@ def classify(X,y, clf,**para):
 
     return classifier,y_test, y_pred
 
-def standarization(X):
-    x_scaler = preprocessing.StandardScaler().fit(X)
 
-    return x_scaler
 
 def preProcess(profile):
     profile.dropna(axis=0, how='any', inplace=True)
@@ -240,63 +358,77 @@ def clustering(X,clf,**para):
 
 def classifyUsers():
 
-    profile = pd.read_csv("/home/maoan/maidianAnalysis/level2-uianalysis/用户画像.csv")
+    profile = pd.read_csv("/home/maoan/maidianAnalysis/level3-growth/userProfile.csv")
 
     ## Construct the features name.
-    features = profile.columns[1:2].tolist() + profile.columns[4:].tolist()
+    features = profile.columns[1:2].tolist() + profile.columns[3:].tolist()
 
     ## preProcess
     print(profile.shape)
-    profile = preProcess(profile)
+    # profile = preProcess(profile)
+    ## basic data preprocessing
+    profile.dropna(axis=0, how='any', inplace=True)
+    col_names = ['Freq','BattleRatio']
 
-    print(profile.columns)
+    # standarlization
+    norm_profile = profile.copy()
+    norm_features_df = norm_profile[col_names]
+    scaler = preprocessing.StandardScaler().fit(norm_features_df.values)
+    norm_values = scaler.transform(norm_features_df.values)
+    norm_profile[col_names] = norm_values
+
+
+
+    print("Features are: {0}".format(features))
     X = profile[features].as_matrix()
-    y = profile["Loss"].as_matrix()
+    y = profile["vip"].as_matrix()
+
+    norm_x = norm_profile[features].as_matrix()
+    norm_y = norm_profile["vip"].as_matrix()
+
+    print(norm_x)
+
+    # dealing with the inbalanced data problem
+    # print('Original dataset shape {}'.format(Counter(norm_y)))
+    # print(np.median(norm_x, axis=0))
+    # sm = SMOTE(random_state=42,kind="borderline2")
+    # X_res, y_res = sm.fit_sample(norm_x, norm_y)
+    # print('Resampled dataset shape {}'.format(Counter(y_res)))
+    # print(np.median(X_res, axis=0))
+    # # print(X_res.shape)
+
+    class_names = ['Non-VIP', 'VIP']
+
 
     ## choose the classifier and set the parameters
     min_split = 20
     max_dep = 3
-    dt = tree.DecisionTreeClassifier
-    lr = LogisticRegression
 
-    # conduct the classfiy and pass the related parameters
-    _, y_test, y_pred = classify(X=X,y=y,clf=dt,
-                                 min_samples_split=min_split, max_depth=max_dep)
+    # randomForestClassify(X,y,features,class_names,n_estimators=500)
+    decisionTreeClassify(X,y,features,class_names,min_samples_split=min_split, max_depth=max_dep)
 
-    class_names = ['Leave', 'Stay']
+    ## use normalized data
+    # logiRegressionClassify(X_res,y_res,features,class_names,penalty="l1")
 
-    print("==========================")
-    print("The true positive feature is '{0}'".format(class_names[1]))
-    print("The precision score is {0}".format(precision_score(y_true=y_test, y_pred=y_pred)))
-    print("The recall score is {0}".format(recall_score(y_true=y_test, y_pred=y_pred)))
-    print("The F1 score is {0}".format(f1_score(y_true=y_test, y_pred=y_pred)))
-    print("==========================")
+def clusterUsers(profile_file, features):
 
-    ## Visualize the result
-    cnf_matrix = confusion_matrix(y_test, y_pred)
-    np.set_printoptions(precision=2)
-    plt.figure()
-    plot_confusion_matrix(cnf_matrix, classes=class_names,
-                          title='Confusion matrix, without normalization')
-    plt.show()
+    profile = pd.read_csv(profile_file)
 
-def clusterUsers():
-    profile = pd.read_csv("/home/maoan/maidianAnalysis/level2-uianalysis/用户画像.csv")
 
     ## Construct the features name.
-    features = profile.columns[1:2].tolist() + profile.columns[4:].tolist()
+    # features = profile.columns[1:2].tolist() + profile.columns[4:].tolist()
 
     ## preProcess
     print(profile.shape)
     preProcess(profile)
 
     X = profile[features].as_matrix()
-    y = profile["Loss"].as_matrix()
+    # y = profile["Loss"].as_matrix()
 
     ## select the clustering methods and set the parameters
     kmeans = KMeans
     amcluster = AgglomerativeClustering
-    max_clusters = 3
+    max_clusters = 5
 
     ## Done standarization before if you want to use K-Means
     scaler = standarization(X)
@@ -333,5 +465,8 @@ def clusterUsers():
 
 if __name__ == "__main__":
 
-    # classifyUsers()
-    clusterUsers()
+    ji36 = "/home/maoan/maidianAnalysis/level2-uianalysis/用户画像.csv"
+    xiamen = "/home/maoan/maidianAnalysis/level2-uianalysis/userTrend.csv"
+    features=['poly_4','poly_3','poly_2','poly_1','poly_0']
+    classifyUsers()
+    # clusterUsers(xiamen,features)

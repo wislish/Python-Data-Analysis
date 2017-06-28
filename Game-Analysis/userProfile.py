@@ -7,6 +7,7 @@ from datetime import datetime
 from datetime import timedelta
 import seaborn as sns
 from sklearn import preprocessing
+from sklearn.preprocessing import OneHotEncoder
 
 import warnings
 warnings.simplefilter('ignore', np.RankWarning)
@@ -26,7 +27,9 @@ class DatabaseManager(object):
 
 def dataGen(db, query):
 
-    for row in db.query(query):
+    dbms = DatabaseManager(db)
+
+    for row in dbms.query(query):
         yield row
 
 ## 单独构造了生成指定间隔的生成器的类
@@ -89,11 +92,11 @@ def latestPlayDate(db):
 
 def findMoneyUser(db):
 
-    dbms = DatabaseManager(db)
+    # dbms = DatabaseManager(db)
     keyList = ["充值", "开服累冲", "购", "礼", "总"]
 
     sqlstr = "SELECT player_id, happen_time, minor_class, action, gold FROM maidian ORDER BY player_id,happen_time ASC;"
-    data_iterator = dataGen(dbms, sqlstr)
+    data_iterator = dataGen(db, sqlstr)
 
     key_indicator = "开服活动"
     #在规定的步数以内元宝需要增长,才算是付费用户
@@ -154,12 +157,9 @@ def findMoneyUser(db):
     return pd.DataFrame({"user":money_ulist, "steps":step_list})
 
 
-def clickFrequency(db):
+def clickFrequencyBeforeVip(db, sqlstr):
 
-    dbms = DatabaseManager(db)
-
-    sqlstr = "SELECT player_id, happen_time, major_class FROM maidian ORDER BY player_id,happen_time ASC;"
-    data_iterator = dataGen(dbms, sqlstr)
+    data_iterator = dataGen(db, sqlstr)
 
     # 如果两次动作的间隔时间大于３００秒，算两次连续动作
     interval_limit = 300
@@ -181,7 +181,7 @@ def clickFrequency(db):
 
         player_id = row[0]
         timestamp = row[1]
-        major_action = row[2]
+        level = row[2]
 
         #         ## 如果在启动阶段，用户的关键指标可能是０，因为需要从服务器取得数据。所以忽略。
         #         if major_action == None or major_action == "启动":
@@ -190,12 +190,10 @@ def clickFrequency(db):
         # 如果更换用户，初始化所有值
         if player_id != current_player:
 
-            ##有的用户只有一次连续操作的时间段
-            if len(freq_list) == 0:
-                diff = last_action_time - first_action_time
-                if diff != 0:
-                    freq = times / diff
-                    freq_list.append(freq)
+            diff = last_action_time - first_action_time
+            if diff != 0:
+                freq = times / diff
+                freq_list.append(freq)
 
             if current_player != -1:
                 total_index_dict[current_player] = np.median(freq_list)
@@ -211,12 +209,14 @@ def clickFrequency(db):
         #             print("last " + str(last_action_time))
         #             print("first " + str(first_action_time))
         #             print("now " + str(timestamp))
+        # ignore actions that had been done after the vip registering.
+        if level >= 1:
+            continue
 
         if timestamp - last_action_time > interval_limit:
 
             diff = last_action_time - first_action_time
-            ## 连续时间必须大于５分钟才加入计算
-            if diff >= 300:
+            if diff != 0:
                 freq = times / diff
                 freq_list.append(freq)
 
@@ -226,12 +226,10 @@ def clickFrequency(db):
         times += 1
         last_action_time = timestamp
 
-    ##有的用户只有一次连续操作的时间段
-    if len(freq_list) == 0:
-        diff = last_action_time - first_action_time
-        if diff != 0:
-            freq = times / diff
-            freq_list.append(freq)
+    diff = last_action_time - first_action_time
+    if diff != 0:
+        freq = times / diff
+        freq_list.append(freq)
 
     total_index_dict[current_player] = np.median(freq_list)
 
@@ -265,114 +263,109 @@ def realPlayTime(timeList, begin_date, end_date, threshold = 300):
     return during_time
 
 ## 分离比较ACTION的逻辑
-def compareAction(user_action, action_list, auto=False):
+def compareAction(user_action, action_list):
 
-    if not auto:
-        if user_action in action_list:
-            return True
-        else:
-            return False
+    if user_action in action_list:
+        return True
     else:
-        if user_action not in action_list:
-            return True
-        else:
-            return False
+        return False
 
 
-def ui_stay_time(in_action, out_action, loss_window=20):
 
-    dbms = DatabaseManager(db)
-    query_sql = "SELECT player_id,action,happen_time, major_class FROM maidian ORDER BY player_id,happen_time ASC"
-    data_iterator= dataGen(dbms, query_sql)
-
-    stay_limit = 1500
-    num_enter = 0
-    num_of_correct_exit = 0
-
-    current_player = -1
-
-    find_flag = False
-    correct_exit = True
-    window_len = 0
-
-    starting_time = time.time()
-    counter = 0
-
-    enter_time = 0
-    total_exit_time = 0
-
-    stay_time = 0
-    duringDict = {}
-
-    for row in data_iterator:
-
-        counter += 1
-        if counter % 1000000 == 0:
-            print("%s lines processed\n" % counter)
-            # print("total enter:" + str(num_enter))
-            # print("correct exit :" + str(num_of_correct_exit))
-
-        player_id = row[0]
-        major_action = row[3]
-        # 如果更换用户，初始化所有值，并且计算上一个用户的所有以及正确的停留的时间。
-        if player_id != current_player:
-            find_flag = False
-            window_len = 0
-            correct_exit = True
-
-            if current_player != -1:
-                stay_time = (total_exit_time - enter_time)
-                duringDict[current_player] = stay_time
-
-            current_player = player_id
-
-            enter_time = 0
-            total_exit_time = 0
-            stay_time = 0
-
-        action = row[1]
-        timestamp = row[2]
-
-        # ## 如果操作为启动状态,忽略.
-        # if major_action == None or major_action == "启动":
-        #     continue
-
-        # 如果被标记，该用户所有剩余action都忽略
-        if not correct_exit:
-            continue
-
-        # 如果对某一个用户，第一次找到相应的进入UI动作，记录总人数加一并标记。记录进入时间
-        if (compareAction(action, in_action) and (not find_flag)):
-            find_flag = True
-            enter_time = timestamp
-            total_exit_time = timestamp
-            num_enter += 1
-            continue
-
-        # 如果已找到进入动作，判断此时动作是否为退出动作。如果是，正确退出加一，否则判断窗口长度是否大于
-        # 标准值，如果是的话，此用户记录为非正常退出，并记录时间
-        if find_flag:
-            if compareAction(action, out_action):
-                num_of_correct_exit += 1
-                total_exit_time = timestamp
-                correct_exit = False
-            else:
-                window_len += 1
-                ##　如果步数大于阈值,且经历的时间小于规定，记录此时时间为退出时间.
-                if window_len >= loss_window and (timestamp - enter_time) < stay_limit:
-                    correct_exit = False
-                    total_exit_time = timestamp
-                ## 如果经历的时间大于规定,则记录退出时间等于开始时间.
-                if (timestamp - enter_time) > stay_limit:
-                    correct_exit = False
-                    total_exit_time = enter_time
-
-    stay_time = (total_exit_time - enter_time)
-    duringDict[current_player] = stay_time
-
-    pd_dist = pd.DataFrame(list(duringDict.items()), columns=['Player', 'TimeOnUI'])
-
-    return pd_dist
+# def ui_stay_time(in_action, out_action, loss_window=20):
+#
+#     dbms = DatabaseManager(db)
+#     query_sql = "SELECT player_id,action,happen_time, major_class FROM maidian ORDER BY player_id,happen_time ASC"
+#     data_iterator= dataGen(dbms, query_sql)
+#
+#     stay_limit = 1500
+#     num_enter = 0
+#     num_of_correct_exit = 0
+#
+#     current_player = -1
+#
+#     find_flag = False
+#     correct_exit = True
+#     window_len = 0
+#
+#     starting_time = time.time()
+#     counter = 0
+#
+#     enter_time = 0
+#     total_exit_time = 0
+#
+#     stay_time = 0
+#     duringDict = {}
+#
+#     for row in data_iterator:
+#
+#         counter += 1
+#         if counter % 1000000 == 0:
+#             print("%s lines processed\n" % counter)
+#             # print("total enter:" + str(num_enter))
+#             # print("correct exit :" + str(num_of_correct_exit))
+#
+#         player_id = row[0]
+#         major_action = row[3]
+#         # 如果更换用户，初始化所有值，并且计算上一个用户的所有以及正确的停留的时间。
+#         if player_id != current_player:
+#             find_flag = False
+#             window_len = 0
+#             correct_exit = True
+#
+#             if current_player != -1:
+#                 stay_time = (total_exit_time - enter_time)
+#                 duringDict[current_player] = stay_time
+#
+#             current_player = player_id
+#
+#             enter_time = 0
+#             total_exit_time = 0
+#             stay_time = 0
+#
+#         action = row[1]
+#         timestamp = row[2]
+#
+#         # ## 如果操作为启动状态,忽略.
+#         # if major_action == None or major_action == "启动":
+#         #     continue
+#
+#         # 如果被标记，该用户所有剩余action都忽略
+#         if not correct_exit:
+#             continue
+#
+#         # 如果对某一个用户，第一次找到相应的进入UI动作，记录总人数加一并标记。记录进入时间
+#         if (compareAction(action, in_action) and (not find_flag)):
+#             find_flag = True
+#             enter_time = timestamp
+#             total_exit_time = timestamp
+#             num_enter += 1
+#             continue
+#
+#         # 如果已找到进入动作，判断此时动作是否为退出动作。如果是，正确退出加一，否则判断窗口长度是否大于
+#         # 标准值，如果是的话，此用户记录为非正常退出，并记录时间
+#         if find_flag:
+#             if compareAction(action, out_action):
+#                 num_of_correct_exit += 1
+#                 total_exit_time = timestamp
+#                 correct_exit = False
+#             else:
+#                 window_len += 1
+#                 ##　如果步数大于阈值,且经历的时间小于规定，记录此时时间为退出时间.
+#                 if window_len >= loss_window and (timestamp - enter_time) < stay_limit:
+#                     correct_exit = False
+#                     total_exit_time = timestamp
+#                 ## 如果经历的时间大于规定,则记录退出时间等于开始时间.
+#                 if (timestamp - enter_time) > stay_limit:
+#                     correct_exit = False
+#                     total_exit_time = enter_time
+#
+#     stay_time = (total_exit_time - enter_time)
+#     duringDict[current_player] = stay_time
+#
+#     pd_dist = pd.DataFrame(list(duringDict.items()), columns=['Player', 'TimeOnUI'])
+#
+#     return pd_dist
 
 def timePlayOneDay(db, begin_date, end_date, threshold):
     dbms = DatabaseManager(db)
@@ -536,36 +529,88 @@ def timePlayAllTime(db, threshold):
 
     return resDF
 
-def userProfile(db):
 
-    moneyU = findMoneyUser(db)
-    freq = clickFrequency(db)
-    freq['money'] = freq['Player'].isin(moneyU['user'])
+def whichInterval(time):
+    morning_b = 8
+    morning_e = 12
+    noon_b = 12
+    noon_e = 14
+    afternoon_b = 14
+    afternoon_e = 18
+    night_b = 20
 
-    resDF = timePlayAllTime(db, 300)
-    resDF['Money'] = freq['money']
-    resDF['Freq'] = freq['Freq']
+    hour = datetime.fromtimestamp(time).hour
 
-    ##玩家首次尝试点击付费相关的界面元素时间
-    firstMoney = firstGetMoney(db)
-    resDF['FirstTime'] = firstMoney['Time']
+    if hour >= morning_b and hour <= morning_e:
+        return "morning"
+    elif hour > noon_b and hour <= noon_e:
+        return "noon"
+    elif hour > afternoon_b and hour <= afternoon_e:
+        return "afternoon"
+    else:
+        return "night"
 
-    ##玩家玩法停留时间
-    enter_action = "世界地图 / 世界地图 / 【主】创建部队"
-    exit_action = "世界地图 / 世界地图 / 【部队】添加部队"
 
-    ustay = ui_stay_time(enter_action, exit_action)
-    resDF['TimeOnUI'] = ustay['TimeOnUI']
+def playInterval(db, sqlstr):
+    data_iterator = dataGen(db, sqlstr)
 
-    ##清洗数据
-    resDF = resDF[resDF['Duration'].apply(lambda x: len(x) != 0)]
-    resDF['Duration'] = resDF['Duration'].apply(lambda x: x[0])
+    # 如果两次动作的间隔时间大于3600秒，算两次连续动作
+    interval_limit = 3600
+    first_action_time = -1
+    last_action_time = -1
 
-    cols = resDF.columns.tolist()
-    new_cols = cols[:2] + cols[4:] + cols[2:4]
-    resDF=resDF[new_cols]
+    current_player = -1
+    interval_list = []
+    total_index_dict = collections.defaultdict(list)
 
-    resDF.to_csv("用户画像.csv", index= False)
+    starting_time = time.time()
+    counter = 0
+
+    for row in data_iterator:
+        counter += 1
+        if counter % 1000000 == 0:
+            print("%s lines processed\n" % counter)
+            # print(timestamp)
+
+        player_id = row[0]
+        timestamp = row[1]
+        level = row[2]
+
+        #         ## 如果在启动阶段，用户的关键指标可能是０，因为需要从服务器取得数据。所以忽略。
+        #         if major_action == None or major_action == "启动":
+        #             continue
+
+        # 如果更换用户，初始化所有值
+        if player_id != current_player:
+
+            interval_list.append(whichInterval(first_action_time))
+            most_freq_val = collections.Counter(interval_list).most_common(1)[0][0]
+            if current_player != -1:
+                total_index_dict[current_player] = most_freq_val
+
+            first_action_time = timestamp
+            last_action_time = timestamp
+            interval_list = []
+            current_player = player_id
+            # print("================")
+
+        if level >= 1:
+            continue
+
+        if timestamp - last_action_time > interval_limit:
+            interval_list.append(whichInterval(first_action_time))
+            first_action_time = timestamp
+
+        last_action_time = timestamp
+
+    interval_list.append(whichInterval(first_action_time))
+    most_freq_val = collections.Counter(interval_list).most_common(1)[0][0]
+    total_index_dict[current_player] = most_freq_val
+
+    pd_dist = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'Freq'])
+
+    return pd_dist
+
 
 def poly_fit(l,poly_deg):
     y = l.values
@@ -711,6 +756,298 @@ def wanfa_analysis(in_action, out_action, data_iterator, loss_window=20):
 
     return pd_dist
 
+def deviceToRatio(x):
+    if x[1]>=10:
+        return x[0]
+    else:
+        return 0
+
+def actionDistribution(db,sqlstr):
+
+    data_iterator = dataGen(db, sqlstr)
+
+    current_player = -1
+    first_action_time = -1
+    last_action_time = -1
+    last_key_value = -1
+    one_block_time = 0
+    num_growth = 0
+    one_interval_clicks_list = 0
+    time_limit = 300
+
+    total_index_dict = collections.defaultdict(list)
+    action_contribution_dict = collections.defaultdict(int)
+    player_list = []
+    starting_time = time.time()
+    counter = 0
+    # dist = collections.defaultdict(int)
+
+    for row in data_iterator:
+        counter += 1
+        if counter % 1000000 == 0:
+            print("%s lines processed\n" % counter)
+            # print(timestamp)
+
+        player_id = row[0]
+        timestamp = row[1]
+        action = row[2]
+        vip = row[3]
+        # 如果更换用户，初始化所有值
+        if player_id != current_player:
+
+            temp_list = []
+            for k, v in action_contribution_dict.items():
+                temp_list.append([k, v])
+
+                #             player_list.append(temp_list)
+
+            if current_player != -1:
+                total_index_dict[current_player] = temp_list
+
+            action_contribution_dict.clear()
+            player_list = []
+            current_player = player_id
+
+        if vip >= 1:
+            continue
+
+        action_contribution_dict[action] += 1
+
+    temp = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'KeyFactor'])
+
+    return temp
+
+def targetActionTimes(db,sqlstr,target_action_lists):
+
+    data_iterator = dataGen(db, sqlstr)
+
+    current_player = -1
+
+    total_index_dict = collections.defaultdict(list)
+    action_contribution_dict = {}
+    counter = 0
+
+    for row in data_iterator:
+        counter += 1
+        if counter % 1000000 == 0:
+            print("%s lines processed\n" % counter)
+            # print(timestamp)
+
+        player_id = row[0]
+        timestamp = row[1]
+        action = row[2]
+        vip = row[3]
+        # 如果更换用户，初始化所有值
+        if player_id != current_player:
+
+            temp_list = []
+            for k, v in action_contribution_dict.items():
+                temp_list.append([k, v])
+
+            if current_player != -1:
+                total_index_dict[current_player] = temp_list
+
+            action_contribution_dict.clear()
+
+            for k in target_action_lists:
+                action_contribution_dict[k] = 0
+            player_list = []
+            current_player = player_id
+
+        if vip >= 1:
+            continue
+
+        if action in target_action_lists:
+            action_contribution_dict[action] += 1
+
+    temp_list = []
+    for k, v in action_contribution_dict.items():
+        temp_list.append([k, v])
+    total_index_dict[current_player] = temp_list
+
+    temp = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'KeyFactor'])
+
+    return temp
+
+
+
+def maxClickFreq(db,sqlstr):
+
+    data_iterator = dataGen(db, sqlstr)
+
+    # 如果两次动作的间隔时间大于３００秒，算两次连续动作
+    interval_limit = 300
+    ton_n = 10
+    first_action_time = -1
+    last_action_time = -1
+    times = -1.
+    current_player = -1
+    freq_list = []
+    alist = []
+    one_interval_list = []
+
+    total_index_dict = collections.defaultdict(list)
+
+    starting_time = time.time()
+    counter = 0
+
+    for row in data_iterator:
+        counter += 1
+        if counter % 1000000 == 0:
+            print("%s lines processed\n" % counter)
+            # print(timestamp)
+
+        player_id = row[0]
+        timestamp = row[1]
+        level = row[2]
+        action = row[3]
+
+        # 如果更换用户，初始化所有值
+        if player_id != current_player:
+
+            diff = last_action_time - first_action_time
+            if diff != 0:
+                freq = times / diff
+                freq_list.append(freq)
+                alist.append(one_interval_list)
+
+            if current_player != -1:
+                indices = np.argsort(freq_list)[:-(ton_n+1):-1]
+                max_freq_list = [freq_list[i] for i in indices]
+                max_freq_action_list = [alist[i] for i in indices]
+                total_index_dict[current_player] = [max_freq_list,max_freq_action_list]
+
+            first_action_time = timestamp
+            last_action_time = timestamp
+            freq_list = []
+            one_interval_list =[]
+            alist = []
+            times = -1.
+            current_player = player_id
+            # print("================")
+        #         if player_id == 36028840385154595:
+
+        #             print("last " + str(last_action_time))
+        #             print("first " + str(first_action_time))
+        #             print("now " + str(timestamp))
+        # ignore actions that had been done after the vip registering.
+        if level >= 1:
+            continue
+
+        if timestamp - last_action_time > interval_limit:
+
+            diff = last_action_time - first_action_time
+            if diff != 0:
+                freq = times / diff
+                freq_list.append(freq)
+                alist.append(one_interval_list)
+            one_interval_list= []
+            first_action_time = timestamp
+            times = -1.
+
+        times += 1
+        last_action_time = timestamp
+        one_interval_list.append(action)
+
+    diff = last_action_time - first_action_time
+    if diff != 0:
+        freq = times / diff
+        freq_list.append(freq)
+        alist.append(one_interval_list)
+
+    indices = np.argsort(freq_list)[:-(ton_n + 1):-1]
+    max_freq_list = [freq_list[i] for i in indices]
+    max_freq_action_list = [alist[i] for i in indices]
+    total_index_dict[current_player] = [max_freq_list, max_freq_action_list]
+
+    pd_dist = pd.DataFrame(list(total_index_dict.items()), columns=['Player', 'FreqAction'])
+
+    return pd_dist
+
+## measure user's flow experience, high intense playing mode
+def flowExperience(db):
+
+    """
+    Use several features to measure the so-called "flow-experience"
+    The logic behind this is that users will be more likely to pay
+    if they have had fun through the game.
+    
+    1. Concentration, action–awareness merging
+        i.highest click frequency
+       ii.long playing time (may leak the information)
+      iii.repeating actions 
+    
+    2. Challenge–skill balance
+        i.power or other resources consume 
+        
+    3. Goals of an activity
+        i. not so much new actions - chaos index
+       ii. 
+    
+    4. Unambiguous feedback
+        i. growth - high growth of power and resources
+       ii. change, not only growth 
+    
+    
+    :return: DataFrame 
+    """
+    sqlstr_max_clickF = "SELECT yonghu_id, timestamp, vip_level FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+
+    maxCF = maxClickFreq(db,sqlstr)
+
+
+def userProfile(db):
+
+    sqlstr = "SELECT yonghu_id, timestamp, vip_level FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+    sqlstr_all = "SELECT yonghu_id, vip_level, shebei, num_days_played FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+    sql_device = "SELECT yonghu_id, vip_level, shebei, num_days_played FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+    conn = sqlite3.connect(db)
+
+    userProfile = pd.DataFrame()
+    #basic user information
+    basic_df = pd.read_sql_query(sqlstr_all, conn)
+
+    print("calc the click frequncy")
+    cf = clickFrequencyBeforeVip(db=db, sqlstr=sqlstr)
+    # basic_df.loc[:, 'Freq'] = cf.loc[:, 'Freq']
+    userProfile = cf.copy()
+
+    print("calc the vip")
+    vip = basic_df.groupby('yonghu_id').apply(lambda x: (x['vip_level'].tail(1) != 0).values)
+    vip = vip.reset_index(name="vip")
+    userProfile.loc[:,'vip'] = vip.loc[:,'vip'].apply(lambda x: x[0])
+
+    print("calc the playing interval during the day")
+    interval_l = playInterval(db=db, sqlstr=sqlstr)
+    userProfile.loc[:, 'interval'] = interval_l['Freq']
+
+    # print("calc the device using ratio")
+    # devices = basic_df.groupby("yonghu_id").apply(lambda x: x['shebei'].value_counts().index[0])
+    # devices = devices.reset_index(name="device")
+    # basic_df.loc[:, 'device'] = devices['device']
+    # device_vip = basic_df.groupby("device")['vip'].apply(lambda x: (sum(x) / len(x), len(x)))
+    # vip_device_ratio = device_vip.apply(lambda x: deviceToRatio(x))
+    # basic_df = basic_df.replace(vip_device_ratio)
+
+    print("calc the battle time ratio")
+    enter_action = "UIRoot2D/ModalPanel/TeamEditWin/Btn_Start"
+    exit_action = "UIRoot2D/NormalPanel/BattleSettlementWin/Img_Bg/Go_Btn/Btn_Quit"
+
+    sqlstr_zhanli = "SELECT yonghu_id,timestamp,action duiwu_level FROM maidian ORDER BY yonghu_id,timestamp ASC;"
+    data_iterator = dataGen(db, sqlstr_zhanli)
+    u_play = wanfa_analysis(in_action=enter_action, out_action=exit_action, data_iterator=data_iterator)
+    userProfile.loc[:, 'BattleRatio'] = u_play['TimeOnUI'].apply(lambda x: sum(x[0]) / (x[1] + 1))
+
+    print("calc the stay flag")
+    nonliush = basic_df.groupby("yonghu_id").apply(lambda x: x['num_days_played'].tail(1).values > 1).apply(
+        lambda x: x[0])
+    nonliush = nonliush.reset_index(name="stay")
+    nonliush.rename(columns={'yonghu_id': 'Player'}, inplace=True)
+    res = pd.merge(userProfile, nonliush, how='inner', on=['Player'])
+
+
+    # res.drop(["vip_level","shebei","num_days_played"],axis=1,inplace=True)
+    pd.get_dummies(res).to_csv("userFile_vip.csv", index=False)
 
 if __name__ == "__main__":
     db = "/home/maoan/maidianAnalysis/level2-uianalysis/world_seven.db"
@@ -728,5 +1065,5 @@ if __name__ == "__main__":
     # query_sql = "SELECT player_id,action,happen_time FROM maidian ORDER BY player_id,happen_time ASC"
     #
     # ustay = ui_stay_time(enter_action,exit_action, dataGen(dbms,query_sql))
-    # userProfile(db)
-    timeSeriesModel(db4,sqlstr,"jinbi",)
+    userProfile(db4)
+    # timeSeriesModel(db4,sqlstr,"jinbi",)
