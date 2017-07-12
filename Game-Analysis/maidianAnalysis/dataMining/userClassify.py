@@ -167,12 +167,38 @@ def regulCV(X,y,n_splits = 10):
 
         yield X_train, y_train, X_test, y_test
 
-def standarization(X):
-    x_scaler = preprocessing.StandardScaler().fit(X)
+def standarization(profile,features=None):
+    """
+    正则化数据，如果有输入特征，则只正则化这些特征的值。
+    否则，正则化所有的数值型特征。
+    :param profile: 原始用户特征DataFrame
+    :param features: 需要正则化的特征集
+    :return: 正则化之后的用户特征DataFrame,以及原来的初始DataFrame
+    """
 
-    return x_scaler
+    if features:
+        select_features = features
+    else:
+        select_features = profile.select_dtypes(include=[np.number]).columns
+
+    norm_profile = profile.copy()
+    norm_features_df = norm_profile[select_features]
+    scaler = preprocessing.StandardScaler().fit(norm_features_df.values)
+    norm_values = scaler.transform(norm_features_df.values)
+    norm_profile[select_features] = norm_values
+
+
+
+    return norm_profile,profile
 
 def confusionMatrixAnalysis(class_names, y_test,y_pred):
+    """
+    测算混淆矩阵的各个指标
+    :param class_names:类别的名称 
+    :param y_test: 真实标记数据值
+    :param y_pred: 预测标记数据值
+    :return: 混淆矩阵的图
+    """
 
     print("========Confusion Matrix Analysis==========")
     print("The true positive feature is '{0}'".format(class_names[1]))
@@ -187,9 +213,19 @@ def confusionMatrixAnalysis(class_names, y_test,y_pred):
     plt.figure()
     plot_confusion_matrix(cnf_matrix, classes=class_names,
                           title='Confusion matrix, without normalization')
-    # plt.show()
+    plt.show()
 
 def decisionTreeClassify(X,y, features,class_names, straitified=True,**para):
+    """
+    决策树分类器
+    :param X: 训练数据，矩阵
+    :param y: 标记数据，矩阵
+    :param features: 特征的名称，按顺序
+    :param class_names: 类别的名称
+    :param straitified: 是否采用stratified交叉验证
+    :param para: 其他　分类器所需要的参数
+    :return: 决策树
+    """
 
     dt = tree.DecisionTreeClassifier(**para)
 
@@ -207,8 +243,19 @@ def decisionTreeClassify(X,y, features,class_names, straitified=True,**para):
 
     visualize_tree(dt,features)
 
-def randomForestClassify(X,y,features,class_names, straitified=True,**para):
+    return dt
 
+def randomForestClassify(X,y,features,class_names, straitified=True,**para):
+    """
+    随机森林分类器
+    :param X: 训练数据，矩阵
+    :param y: 标记数据，矩阵
+    :param features: 特征的名称，按顺序
+    :param class_names: 类别的名称
+    :param straitified: 是否采用stratified交叉验证
+    :param para: 其他　分类器所需要的参数
+    :return: 随机森林
+    """
     rf = RandomForestClassifier(**para)
 
     print("{0} has been established with {1}".format("Random Forest Classifier ", para))
@@ -241,12 +288,22 @@ def randomForestClassify(X,y,features,class_names, straitified=True,**para):
     # print("{0} Score is: {1}".format("Validation Score is ", score))
     # confusionMatrixAnalysis(class_names,test_y,y_pred)
 
+    return rf
 
 def logiRegressionClassify(X,y, features,class_names, straitified=True,**para):
-
+    """
+    逻辑回归分类器
+    :param X: 训练数据，矩阵
+    :param y: 标记数据，矩阵
+    :param features: 特征的名称，按顺序
+    :param class_names: 类别的名称
+    :param straitified: 是否采用stratified交叉验证
+    :param para: 其他　分类器所需要的参数
+    :return: 逻辑回归分类器
+    """
     lr = LogisticRegression(**para)
 
-
+    print("==================================")
     print("{0} has been established with {1}".format("Decision Tree Classifier ", para))
 
     cv = stratifiedCV(X, y) if straitified else regulCV(X, y)
@@ -260,40 +317,15 @@ def logiRegressionClassify(X,y, features,class_names, straitified=True,**para):
     confusionMatrixAnalysis(class_names, y_test, y_pred)
 
     print("\n========Coefficients==========\n")
-    print(lr.coef_)
+
+    indices = np.argsort(abs(lr.coef_[0]))[::-1]
+
     for f in range(X_train.shape[1]):
         print("%2d) %-*s %f" % (f + 1, 30,
-                                features[f],
-                                lr.coef_[0][f]))
+                                features[indices[f]],
+                                lr.coef_[0][indices[f]]))
 
-def classify(X,y, clf,**para):
-    # y = profile["Loss"].as_matrix()
-    # X = profile[features].as_matrix()
-
-    kf = KFold(n_splits=10)
-    skf = StratifiedKFold(n_splits=6)
-
-    # print(**para)
-    classifier = clf(**para)
-    name = str(classifier).split("(")[0]
-
-
-    # dt = tree.DecisionTreeClassifier(min_samples_split=min_split, max_depth=max_dep)
-    print("{0} has been established with {1}".format(name, para))
-    # lr = LogisticRegression(penalty='l1')
-
-    for train_index, test_index in skf.split(X, y):
-        #     print("TRAIN:",train_index, "TEST:", test_index)
-        X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
-        classifier.fit(X_train, y_train)
-        y_pred = classifier.predict(X_test)
-        score = accuracy_score(y_test, y_pred)
-        print("10-fold Score is: {0}".format(score))
-
-    return classifier,y_test, y_pred
-
-
+    return lr
 
 def preProcess(profile):
     profile.dropna(axis=0, how='any', inplace=True)
@@ -302,6 +334,11 @@ def preProcess(profile):
     return profile
 
 def transfromFeatures(predDF):
+    """
+    把名义性或者字符型特征转化成数值型特征，并补全缺失值。
+    :param predDF: 需要转换的数据框，DataFrame格式
+    :return: 全新的数据框，DataFrame
+    """
 
     print("Transform the categorical features into numerical.")
     cat_col = predDF.select_dtypes(exclude=[np.number]).columns
@@ -328,9 +365,14 @@ def transfromFeatures(predDF):
 
     return recurring_hosts
 
-    # return profile
 def clustering(X,clf,**para):
-
+    """
+    聚类
+    :param X: 训练数据，矩阵
+    :param clf: 聚类器
+    :param para: 聚类器所需要的参数
+    :return: 训练过后的聚类器
+    """
     # skf = StratifiedKFold(n_splits=3)
     cluster = clf(**para)
 
@@ -384,80 +426,101 @@ def clustering(X,clf,**para):
 
     return cluster
 
-def classifyUsers():
+def classifyUsers(profile,class_names = ["Negative","Positive"],stand_col_names=None,im_balance=False):
+    """
+    根据输入的用户特征，来进行分类。其中，数据集中最后一列为需要预测的特征，会自动进行正则化以及
+    丢掉缺失数据。还可以对不平衡的数据集进行插补。
+    
+    目前默认采用三种分类算法，分别为决策树，随机森林，逻辑回归。
+    :param profile_path: 存储用户特征文件的路径，其中最后一个特征为预测特征
+    :param class_names: 类别名称
+    :param stand_col_names: 需要正则化的特征名，如果无，则自动正则化所有数值型特征
+    :param im_balance: 是否需要采用SMOT-Boderline使得两类数据变得均衡
+    :return: 
+    """
 
     # profile = pd.read_csv("/home/maoan/maidianAnalysis/level3-growth/userProfile.csv")
-    profile = pd.read_csv("/home/maoan/maidianAnalysis/level3-growth/user_actions.csv")
+    # profile = pd.read_csv("/home/maoan/maidianAnalysis/level3-growth/user_actions.csv")
+    # profile = pd.read_csv(profile_path)
+
     ## Construct the features name.
-    # features = profile.columns[1:2].tolist() + profile.columns[3:].tolist()
     features = profile.columns.tolist()[:-1]
-    ## preProcess
-    print(profile.shape)
-    # profile = preProcess(profile)
+    pred_feature= profile.columns.tolist()[-1]
+
+
     ## basic data preprocessing
     profile.dropna(axis=0, how='any', inplace=True)
-    col_names = ['Freq','BattleRatio']
+    # col_names = ['Freq','BattleRatio']
+    # profile = transfromFeatures(profile)
 
     # standarlization
-    # norm_profile = profile.copy()
-    # norm_features_df = norm_profile[col_names]
-    # scaler = preprocessing.StandardScaler().fit(norm_features_df.values)
-    # norm_values = scaler.transform(norm_features_df.values)
-    # norm_profile[col_names] = norm_values
+    norm_profile, _ = standarization(profile,stand_col_names)
 
     print("Features are: {0}".format(features))
+
     X = profile[features].as_matrix()
-    y = profile["vip"].as_matrix()
+    y = profile[pred_feature].as_matrix()
 
-    # norm_x = norm_profile[features].as_matrix()
-    # norm_y = norm_profile["vip"].as_matrix()
+    norm_x = norm_profile[features].as_matrix()
+    norm_y = norm_profile[pred_feature].as_matrix()
 
-    # print(norm_x)
 
-    # dealing with the inbalanced data problem
-    # print('Original dataset shape {}'.format(Counter(norm_y)))
-    # print(np.median(norm_x, axis=0))
-    # sm = SMOTE(random_state=42,kind="borderline2")
-    # X_res, y_res = sm.fit_sample(norm_x, norm_y)
-    # print('Resampled dataset shape {}'.format(Counter(y_res)))
-    # print(np.median(X_res, axis=0))
-    # # print(X_res.shape)
+    # dealing with the imbalanced data problem
+    if im_balance:
+        print('Original dataset shape {}'.format(Counter(norm_y)))
+        print(np.median(norm_x, axis=0))
+        sm = SMOTE(random_state=42,kind="borderline2")
+        X_res, y_res = sm.fit_sample(norm_x, norm_y)
+        X,y = X_res, y_res
+        norm_x,norm_y = X_res, y_res
 
-    class_names = ['Non-VIP', 'VIP']
-
+    # class_names = ['Non-VIP', 'VIP']
 
     ## choose the classifier and set the parameters
     min_split = 20
     max_dep = 3
 
-    # randomForestClassify(X,y,features,class_names,n_estimators=500)
     decisionTreeClassify(X,y,features,class_names,min_samples_split=min_split, max_depth=max_dep)
 
-    ## use normalized data
-    # logiRegressionClassify(X_res,y_res,features,class_names,penalty="l1")
+    # use normalized data
+    logiRegressionClassify(norm_x,norm_y,features,class_names,penalty="l1")
 
-def clusterUsers(profile_file, features):
+    randomForestClassify(X,y,features,class_names,n_estimators=250)
 
-    profile = pd.read_csv(profile_file)
 
+def clusterUsers(profile_df):
+
+    """
+    对用户进行聚类。可以在里面选择需要的聚类模型，输入包括所有训练特征，不含要预测的特征。
+    以后可以考虑分离各个聚类模型。
+    :param profile_df: 用户特征的数据框, DataFrame格式
+    :return: 
+    """
+    # profile = pd.read_csv(profile_file)
 
     ## Construct the features name.
     # features = profile.columns[1:2].tolist() + profile.columns[4:].tolist()
+    # ## preProcess
+    # print(profile.shape)
+    # preProcess(profile)
 
-    ## preProcess
-    print(profile.shape)
-    preProcess(profile)
+    select_fea = profile_df.columns.tolist()
 
-    X = profile[features].as_matrix()
-    # y = profile["Loss"].as_matrix()
+    profile_df.dropna(axis=0, how='any', inplace=True)
+
+    # profile_df = transfromFeatures(profile_df)
 
     ## select the clustering methods and set the parameters
     kmeans = KMeans
     amcluster = AgglomerativeClustering
-    max_clusters = 5
+    max_clusters = 3
 
     ## Done standarization before if you want to use K-Means
-    scaler = standarization(X)
+    X=profile_df.as_matrix()
+    scaler = preprocessing.StandardScaler().fit(X)
+
+    # stand_features = ["Freq","BattleRatio"]
+
 
     ##plot the sum of within cluster errors as the num of clusters grow...
     distortions = []
@@ -469,10 +532,10 @@ def clusterUsers(profile_file, features):
         origin_x = scaler.inverse_transform(res.cluster_centers_)
 
         print("Clusters centroids are:")
-        head_row = ('{:15}' + ''.join([' {:^9} |'] * len(features))).format('',*features)
+        head_row = ('{:15}' + ''.join([' {:^9} |'] * len(select_fea))).format('',*select_fea)
         print(head_row)
 
-        fmt = '{:15} |' + ''.join([' {:^9.4} |'] * len(features))
+        fmt = '{:15} |' + ''.join([' {:^9.4} |'] * len(select_fea))
         for num in range(i):
             name_row = "Cluster" + str(num+1)
             print(fmt.format(name_row, *(origin_x[num].tolist())))
@@ -485,14 +548,11 @@ def clusterUsers(profile_file, features):
     plt.show()
 
 
-        # print(re)
-    #
-    # print(origin_x)
-
 if __name__ == "__main__":
+    user_actions= pd.read_csv("./user_actions.csv")
+    user_profile = pd.read_csv("./userFile_vip.csv")
 
-    ji36 = "/home/maoan/maidianAnalysis/level2-uianalysis/用户画像.csv"
-    xiamen = "/home/maoan/maidianAnalysis/level2-uianalysis/userTrend.csv"
-    features=['poly_4','poly_3','poly_2','poly_1','poly_0']
-    classifyUsers()
-    # clusterUsers(xiamen,features)
+    class_names = ['Non-VIP', 'VIP']
+
+    # classifyUsers(user_actions,class_names)
+    clusterUsers(user_profile)

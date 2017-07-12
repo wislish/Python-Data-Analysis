@@ -1,0 +1,24 @@
+digraph Tree {
+node [shape=box] ;
+0 [label="UIRoot2D/NormalPanel/RobWin/Go_Rob/Go_TreasureList/Go_Layout/Go_TreasureListItem_Win_Rob(Clone) <= 47.0\ngini = 0.0968\nsamples = 2881\nvalue = [2734, 147]"] ;
+1 [label="UIRoot2D/NormalPanel/HeroAttributeWin/Go_HeroAttribute/Go_ScrollList/Go_List/Go_LevelUP/Btn_LevelUp <= 166.0\ngini = 0.0508\nsamples = 2337\nvalue = [2276, 61]"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label="UIRoot2D/NormalPanel/RobWin/Go_Rob/Go_TreasureList/Go_Layout/Go_TreasureListItem_Win_Rob(Clone) <= 7.0\ngini = 0.0485\nsamples = 2332\nvalue = [2274, 58]"] ;
+1 -> 2 ;
+3 [label="gini = 0.0263\nsamples = 1800\nvalue = [1776, 24]"] ;
+2 -> 3 ;
+4 [label="gini = 0.1197\nsamples = 532\nvalue = [498, 34]"] ;
+2 -> 4 ;
+5 [label="gini = 0.48\nsamples = 5\nvalue = [2, 3]"] ;
+1 -> 5 ;
+6 [label="UIRoot2D/NormalPanel/HeroListWin/Btn_Back <= 281.5\ngini = 0.2662\nsamples = 544\nvalue = [458, 86]"] ;
+0 -> 6 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+7 [label="UIRoot2D/NormalPanel/BattleWin/Go_TeamSkill/Btn_TeamSkill <= 258.0\ngini = 0.2525\nsamples = 533\nvalue = [454, 79]"] ;
+6 -> 7 ;
+8 [label="gini = 0.2364\nsamples = 511\nvalue = [441, 70]"] ;
+7 -> 8 ;
+9 [label="gini = 0.4835\nsamples = 22\nvalue = [13, 9]"] ;
+7 -> 9 ;
+10 [label="gini = 0.4628\nsamples = 11\nvalue = [4, 7]"] ;
+6 -> 10 ;
+}
