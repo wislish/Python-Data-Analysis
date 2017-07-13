@@ -187,8 +187,6 @@ def standarization(profile,features=None):
     norm_values = scaler.transform(norm_features_df.values)
     norm_profile[select_features] = norm_values
 
-
-
     return norm_profile,profile
 
 def confusionMatrixAnalysis(class_names, y_test,y_pred):
@@ -429,9 +427,11 @@ def clustering(X,clf,**para):
 def classifyUsers(profile,class_names = ["Negative","Positive"],stand_col_names=None,im_balance=False):
     """
     根据输入的用户特征，来进行分类。其中，数据集中最后一列为需要预测的特征，会自动进行正则化以及
-    丢掉缺失数据。还可以对不平衡的数据集进行插补。
+    丢掉缺失数据。还可以对不平衡的数据集进行插补。但是输入DataFrame必须无名义性或者字符型变量，
+    要提前进行编码。
     
     目前默认采用三种分类算法，分别为决策树，随机森林，逻辑回归。
+    能自动生成结果，包括混淆矩阵的各个指标，以及重要的结果参数。
     :param profile_path: 存储用户特征文件的路径，其中最后一个特征为预测特征
     :param class_names: 类别名称
     :param stand_col_names: 需要正则化的特征名，如果无，则自动正则化所有数值型特征
@@ -452,7 +452,6 @@ def classifyUsers(profile,class_names = ["Negative","Positive"],stand_col_names=
     profile.dropna(axis=0, how='any', inplace=True)
     # col_names = ['Freq','BattleRatio']
     # profile = transfromFeatures(profile)
-
     # standarlization
     norm_profile, _ = standarization(profile,stand_col_names)
 
@@ -492,7 +491,8 @@ def clusterUsers(profile_df):
 
     """
     对用户进行聚类。可以在里面选择需要的聚类模型，输入包括所有训练特征，不含要预测的特征。
-    以后可以考虑分离各个聚类模型。
+    以后可以考虑分离各个聚类模型。但是输入DataFrame必须无名义性或者字符型变量，
+    要提前进行编码。
     :param profile_df: 用户特征的数据框, DataFrame格式
     :return: 
     """

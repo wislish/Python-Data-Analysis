@@ -795,7 +795,6 @@ def ui_time_ratio(in_action, out_action, data_iterator,time_limit = 600, loss_wi
     window_len = 0
     time_list = []
 
-    starting_time = time.time()
     counter = 0
 
     enter_time = 0
@@ -903,6 +902,17 @@ def merge_counter(x,counters):
         counters[key].append(temp[key])
 
 def findOutLierActions(res,nonliush,real_vip,topN=20):
+    """
+    1. 把每个用户的相同动作合并，并统计对应的次数，以此可以得到付费用户和非付费用户全部玩家的行为次数分布。
+    然后按照点击次数中位数选出了前20个出现次数最多的动作，用来体现最常被点击的动作。
+    
+    2. 在所有用户中，统计所有动作次数的标准差值，并选出前20个标准差值最大的动作，作为区分度大的动作。
+    :param res: pd.DataFrame. 含有用户action点击次数分布的列，Actions
+    :param nonliush: pd.DataFrame. 含有用户是否流失信息的,含有stay列
+    :param real_vip: pd.Series. 用户是否是付费用户
+    :param topN: 前多少个动作
+    :return: 
+    """
 
     non_vip_stay_users = res.loc[nonliush['stay'],].loc[~real_vip, 'Actions']
     vip_stay_users = res.loc[nonliush['stay'],].loc[real_vip, 'Actions']
@@ -921,15 +931,13 @@ def findOutLierActions(res,nonliush,real_vip,topN=20):
     stay_total_dist = collections.defaultdict(list)
     stay_users.apply(lambda x: merge_counter(x, stay_total_dist))
     diff_action = collections.Counter({k: np.std(stay_total_dist[k]) for k in stay_total_dist.keys()})
-    diff_top_actions = [ele[0] for ele in diff_action.most_common(topN//2)]
+    diff_top_actions = [ele[0] for ele in diff_action.most_common(topN)]
 
     name_vip = "非流失付费用户动作"
     name_non_vip = "非流失非付费用户动作"
     name_diff= "非流失方差大动作"
 
-    writeTo(parent_file,name_vip)
-
-    return nonliush
+    return vip_top_actions,non_vip_top_actions,diff_top_actions
 
 if __name__ == "__main__":
 

@@ -109,15 +109,19 @@ def compareAction(user_action, action_list):
     else:
         return False
 
-
-"""
-    Repeating Interval Decorator
+def repeatByInterval(begin_date, during_days, upperDir,file_name):
+    """
+        Repeating Interval Decorator
         used to process one function several days.
     在给定的天数内，对每天的数据进行相应的运算。
     被装饰的函数必须有`begin_date`,`end_date`这两个参数。
     
-"""
-def repeatByInterval(begin_date, during_days, upperDir,file_name):
+    :param begin_date: 时间区间开始时间戳
+    :param during_days: 持续天数
+    :param upperDir: 存储的父文件夹
+    :param file_name: 存储的文件名
+    :return: 
+    """
     def decorate(func):
         def clocked(**para):
             intervalGen = IntervalGenerator(begin_date.timestamp(), days=during_days)
